@@ -27,7 +27,7 @@ LINE_DATA_PATH = "/home/LIBS/prochazka/data/Running_projects/24_0011_CF_spark/CF
 kb = 1.380649e-16 #erg/K #Boltzmann  # J/K
 c = speed_of_light  # m/s
 h = 6.62607015e-27 #erg*s #Planck  # J.s
-me = electron_mass*1000  # kg
+me = electron_mass*1000  # g
 e = elementary_charge  # C
 
 #------------------------------
@@ -137,6 +137,7 @@ def saha_boltzmann_analysis(inp_data_idx, experimentList, sample_list, lineData,
                 SahBol_data.loc[u, "Y"] = float(dL)
                 SahBol_data.loc[u, "X"] = (lineData_temp.iloc[u,4]*1.60217e-12) + (ion_st * Eion_temp['Eion'].values[0]*1.60217e-12 if not Eion_temp.empty else 0)
                 print(f"Y={SahBol_data.loc[u, 'Y']}, X={SahBol_data.loc[u, 'X']}")
+                print(f"Dimensions of SahBol_data: {SahBol_data.shape}")
 
             dT = 1000
             T0 = 9175
@@ -147,22 +148,30 @@ def saha_boltzmann_analysis(inp_data_idx, experimentList, sample_list, lineData,
                     S10 = (((2*PF_II)/(Ne*PF_I))*((me*kb*T0)/((h**2)/(2*np.pi)))**(1.5))*np.exp(-(Eion_temp['Eion'].values[0]*1.60217e-12)/(kb*T0)) if not Eion_temp.empty else 1
                     # Transition coefficient
                     kt = ((lineData_temp['Wl']**4)/(8*np.pi*c)) * (lineData_temp['Ak']*lineData_temp['gk']*np.exp(-(lineData_temp['Ei']*1.60217e-12)/(kb*T0))) * (1-np.exp(-1.60217e-12*(lineData_temp['Ek']-lineData_temp['Ei'])/(kb*T0))) / np.where(lineData_temp['ion.state']=="I", PF_I, PF_II)
+                    # Ionization ratio
                     ri = np.where(lineData_temp['ion.state']=="I", 1/(1+S10), S10/(1+S10))
+                    # Ionization state
                     ion_st = np.where(lineData_temp.iloc[:,1]=="II", 1, 0)
+                    # Saha-Boltzmann equations
                     Lp = ((8*np.pi*h*c)/(10*lineData_temp['Wl']**3))*N*np.exp((-1.60217e-12*(lineData_temp['Ek']-lineData_temp['Ei']))/(kb*T0))*(lineData_temp['gk']/lineData_temp['gi'])
+                   
+                    #print shape of data_lines and Lp and SahBol_data["Y"]
+                    print(f"data_lines shape: {len(data_lines[1,:])}, Lp shape: {len(Lp)}, SahBol_data['Y'] shape: {len(SahBol_data['Y'])}")
+                    # Calculate Cs_y and Cs_x
+                    Cs_y = np.array(data_lines[0,:], dtype=float)/(np.array(Lp,dtype=float)*np.array(SahBol_data["Y"], dtype=float))
+                    Cs_x = (0.01*Cc*kt*ri*N)/np.array(SahBol_data["Y"], dtype=float)
+                    print(f"data_lines: {data_lines}")
                     
-                    Cs_y = data_lines[1,:]/(Lp*SahBol_data["Y"].astype(float))
-                    Cs_x = (0.01*Cc*kt*ri*N)/SahBol_data["Y"].astype(float)
-                    SahBol_y = np.log((data_lines[1,:]*lineData_temp.iloc[:,2]*1e-9)/(lineData_temp.iloc[:,7].astype(float)*lineData_temp.iloc[:,5].astype(float))) - (ion_st*np.log(2*(2*np.pi*me*kb*T0)**1.5/((h**3)*Ne))) - np.log(Cc/(100*PF_I*(1+S10)))
-                    SahBol_x = (lineData_temp.iloc[:,4]*1.60217e-12)+(ion_st*Eion_temp['Eion'].values[0]*1.60217e-12 if not Eion_temp.empty else 0)
-                    # Print SahBol_x and SahBol_y for debugging
-                    print(f"SahBol_x: {SahBol_x}")
-                    print(f"SahBol_y: {SahBol_y}")
-                    Kl = (kt*ri*N*0.01*Cc)/SahBol_data["Y"].astype(float)
+
+
+                    SahBol_y = np.log((np.array(data_lines[1,:], dtype=float)*lineData_temp['Wl']*1e-9)/(lineData_temp['gk']*lineData_temp['Ak'])) - (ion_st*np.log(2*(2*np.pi*me*kb*T0)**1.5/((h**3)*Ne))) - np.log(Cc/(100*PF_I*(1+S10)))
+                    SahBol_x = (lineData_temp['Ek']*1.60217e-12)+(ion_st*Eion_temp['Eion'].values[0]*1.60217e-12 if not Eion_temp.empty else 0)
+
+                    Kl = (kt*ri*N*0.01*Cc)/np.array(SahBol_data["Y"], dtype=float)
                     corr_int = 1 if q == 1 else (1-np.exp(-Kl))/Kl
                     SahBol_x_corr = SahBol_x
-                    SahBol_y_corr = np.log(((data_lines[1,:]/corr_int**0.5)*lineData_temp.iloc[:,2]*1e-9)/(lineData_temp.iloc[:,7].astype(float)*lineData_temp.iloc[:,5].astype(float))) - (ion_st*np.log(2*(2*np.pi*me*kb*T0)**1.5/((h**3)*Ne))) - np.log(Cc/(100*PF_I*(1+S10)))
-                    
+                    SahBol_y_corr = np.log(((np.array(data_lines[1,:], dtype=float)/corr_int**0.5)*lineData_temp.iloc[:,2]*1e-9)/(lineData_temp.iloc[:,7].astype(float)*lineData_temp.iloc[:,5].astype(float))) - (ion_st*np.log(2*(2*np.pi*me*kb*T0)**1.5/((h**3)*Ne))) - np.log(Cc/(100*PF_I*(1+S10)))
+                    print(f"SahBol_x_corr={SahBol_x_corr}, SahBol_y_corr={SahBol_y_corr}")
 
                     # Linear fit
                     fit = np.polyfit(SahBol_x_corr, SahBol_y_corr, 1)
@@ -189,11 +198,14 @@ def saha_boltzmann_analysis(inp_data_idx, experimentList, sample_list, lineData,
                     "y": SahBol_y,
                     "Cs.x": Cs_x,
                     "Cs.y": Cs_y,
-                    "dL": SahBol_data["Y"].astype(float),
+                    "dL": np.array(SahBol_data["Y"],dtype=float),
                     "x.corr": SahBol_x_corr,
                     "y.corr": SahBol_y_corr,
                     "Line.max": data_lines[1,:]/corr_int**0.5
                 })
+
+                print(f"SahBol_temp shape: {SahBol_temp.shape}")
+
                 SahBol = pd.concat([SahBol_temp, SahBol], ignore_index=True)
                 SahaBoltzmann_temp = pd.DataFrame({
                     "Sample": [experimentList[inp_data_idx]],
@@ -205,12 +217,13 @@ def saha_boltzmann_analysis(inp_data_idx, experimentList, sample_list, lineData,
                 })
                 SahaBoltzmann = pd.concat([SahaBoltzmann, SahaBoltzmann_temp], ignore_index=True)
                 finalData = pd.concat([finalData, SahBol_data], ignore_index=True)
+                print(f"SahBol: {SahBol}")
 
         # Concentration calculation
         C_u = (SahaBoltzmann['U_I']*np.exp(SahaBoltzmann['Intercept']))/np.sum(SahaBoltzmann['U_I']*np.exp(SahaBoltzmann['Intercept']))
         SahaBoltzmann['C'] = C_u
 
-        SahaBoltzmann_reduced = SahaBoltzmann[(SahaBoltzmann['Temp'] < 16000) & (SahaBoltzmann['Temp'] > 8800) & (SahaBoltzmann['R2'] > 0.965)]
+        SahaBoltzmann_reduced = SahaBoltzmann[(SahaBoltzmann['Temp'] < 16000) & (SahaBoltzmann['Temp'] > 8800) & (SahaBoltzmann['R2'] > 0.945)]
         C_calc = (SahaBoltzmann_reduced['U_I']*np.exp(SahaBoltzmann_reduced['Intercept']))/np.sum(SahaBoltzmann_reduced['U_I']*np.exp(SahaBoltzmann_reduced['Intercept']))
         SahaBoltzmann_reduced['C.calc'] = C_calc
 
@@ -220,11 +233,11 @@ def saha_boltzmann_analysis(inp_data_idx, experimentList, sample_list, lineData,
 # Main execution block
 # -----------------------------
 def main():
-    inp_data_idx = 1  # Index of the experiment to process
+    inp_data_idx = 14  # Index of the experiment to process
     sample_list, Eion, QparFinal, lineData = load_metadata()
     experimentList = [f for f in os.listdir(EXPERIMENT_FOLDER) if f.endswith('.json')]
-    experimentList.sort()
-    print(f"Found {len(experimentList)} experiments.")
+    #experimentList.sort()
+    
 
     SB = saha_boltzmann_analysis(inp_data_idx, experimentList, sample_list, lineData, Eion, QparFinal)
     print(f"SB={SB}")
